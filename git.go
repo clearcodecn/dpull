@@ -93,6 +93,9 @@ func (c *GitClient) checkRepoExist() (bool, error) {
 }
 
 func (c *GitClient) lazyInit() error {
+	if c.repo != nil {
+		return nil
+	}
 	repo, err := git.PlainOpen(c.option.StorePath)
 	if err != nil {
 		return err
@@ -210,6 +213,20 @@ func (c *GitClient) TagAndPush(tag string, msg string) error {
 
 func (c *GitClient) Write(b []byte) (int, error) {
 	return os.Stdout.Write([]byte(color.BlackString(string(b))))
+}
+
+func (c *GitClient) RemoveTag(tag string) error {
+	if err := c.lazyInit(); err != nil {
+		return err
+	}
+	err := c.repo.DeleteTag(tag)
+	if err != nil {
+		return err
+	}
+	c.repo.Push(&git.PushOptions{
+		RefSpecs: []config.RefSpec{":refs/tags/*:refs/tags/*"},
+	})
+
 }
 
 func tagExists(tag string, r *git.Repository) bool {

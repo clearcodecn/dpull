@@ -1,4 +1,4 @@
-package dpull
+package main
 
 import (
 	"fmt"

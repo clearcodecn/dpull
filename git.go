@@ -6,23 +6,34 @@ import (
 	"github.com/fatih/color"
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/config"
+	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/plumbing/transport/ssh"
 	"github.com/pkg/errors"
 	gssh "golang.org/x/crypto/ssh"
+	"io/ioutil"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"time"
 )
 
-type GitClient struct {
-	option RepoOption
+var (
+	ErrRepoAlreadyExist = errors.New("repo already exist")
+)
 
-	repo *git.Repository
+type GitClient struct {
+	option       RepoOption
+	clientOption GitClientOption
+	repo         *git.Repository
 }
 
-func NewGitClient(option RepoOption) (*GitClient, error) {
+type GitClientOption struct {
+	EnableLog bool
+}
+
+func NewGitClient(option RepoOption, clientOption GitClientOption) (*GitClient, error) {
 	cli := new(GitClient)
 	cli.option = option
 
@@ -56,14 +67,12 @@ func NewGitClient(option RepoOption) (*GitClient, error) {
 func (c *GitClient) Clone(ctx context.Context) error {
 	ok, _ := c.checkRepoExist()
 	if ok {
-		return fmt.Errorf("path: %s already exist", c.option.StorePath)
+		return ErrRepoAlreadyExist
 	}
 	auth, err := c.getAuth()
 	if err != nil {
 		return err
 	}
-	color.Green("git clone --depth=1 %s", c.option.SSHUrl)
-
 	_, err = git.PlainCloneContext(ctx, c.option.StorePath, false, &git.CloneOptions{
 		URL:      c.option.SSHUrl,
 		Auth:     auth,
@@ -152,81 +161,104 @@ func (c *GitClient) AddAndCommit(paths []string, msg string) error {
 	}
 	for _, p := range paths {
 		p = strings.TrimPrefix(p, c.option.StorePath+string(os.PathSeparator))
-		_, err = t.Add(p)
-		if err != nil {
-			return err
-		}
+		_, _ = t.Add(p)
 	}
 	user := &object.Signature{
 		Name:  c.option.GitUsername,
 		Email: c.option.GitEmail,
 		When:  time.Now(),
 	}
-	_, err = t.Commit(msg, &git.CommitOptions{
+	_, _ = t.Commit(msg, &git.CommitOptions{
 		All:       true,
 		Author:    user,
 		Committer: user,
 	})
-	if err != nil {
-		return err
-	}
 	return nil
 }
 
-func (c *GitClient) TagAndPush(tag string, msg string) error {
+func (c *GitClient) TagAndPush(oldTag string, msg string) (tag string, err error) {
+	tag = c.tag(oldTag)
+	defer func() {
+		tag = c.unTag(tag)
+	}()
 	if err := c.lazyInit(); err != nil {
-		return err
+		return "", err
 	}
-	ref, err := c.repo.Head()
+	t, err := c.repo.Worktree()
 	if err != nil {
-		return err
+		return "", err
 	}
-	if tagExists(tag, c.repo) {
-		return errors.New("tag already exist")
-	}
-	_, err = c.repo.CreateTag(tag, ref.Hash(), &git.CreateTagOptions{
-		Message: msg,
+	auth, err := c.getAuth()
+
+	err = t.PullContext(context.Background(), &git.PullOptions{
+		RemoteName:    "origin",
+		ReferenceName: plumbing.NewTagReferenceName(tag),
+		SingleBranch:  true,
+		Depth:         1,
+		Auth:          auth,
 	})
+
+	isNotFound := false
 	if err != nil {
-		return err
+		if errors.Is(err, plumbing.ErrReferenceNotFound) {
+			isNotFound = true
+		} else {
+			if errors.Is(err, plumbing.ErrObjectNotFound) {
+				return tag, nil
+			}
+			return tag, err
+		}
 	}
 
-	auth, err := c.getAuth()
-	if err != nil {
-		return err
-	}
-	po := &git.PushOptions{
-		RemoteName: "origin",
-		Progress:   c,
-		RefSpecs:   []config.RefSpec{config.RefSpec("refs/tags/*:refs/tags/*")},
-		Auth:       auth,
-	}
-	err = c.repo.Push(po)
-	if err != nil {
-		if err == git.NoErrAlreadyUpToDate {
-			return nil
+	if isNotFound {
+		ref, err := c.repo.Head()
+		if err != nil {
+			return tag, err
 		}
-		return err
+		_, err = c.repo.CreateTag(tag, ref.Hash(), &git.CreateTagOptions{
+			Message: msg,
+		})
+		po := &git.PushOptions{
+			RemoteName: "origin",
+			Progress:   c,
+			RefSpecs:   []config.RefSpec{config.RefSpec(fmt.Sprintf("refs/tags/%s:refs/tags/%s", tag, tag))},
+			Auth:       auth,
+		}
+		err = c.repo.Push(po)
+		if err != nil {
+			return tag, err
+		}
+		return tag, nil
 	}
-	return nil
+	return tag, nil
 }
 
 func (c *GitClient) Write(b []byte) (int, error) {
-	return os.Stdout.Write([]byte(color.BlackString(string(b))))
+	if !c.clientOption.EnableLog {
+		return len(b), nil
+	}
+	return os.Stdout.Write([]byte(color.WhiteString(string(b))))
 }
 
 func (c *GitClient) RemoveTag(tag string) error {
 	if err := c.lazyInit(); err != nil {
 		return err
 	}
-	err := c.repo.DeleteTag(tag)
+	tag = c.tag(tag)
+	tagRef := plumbing.NewTagReferenceName(tag)
+	_ = c.repo.Storer.RemoveReference(tagRef)
+	auth, err := c.getAuth()
 	if err != nil {
 		return err
 	}
-	c.repo.Push(&git.PushOptions{
-		RefSpecs: []config.RefSpec{":refs/tags/*:refs/tags/*"},
+	err = c.repo.Push(&git.PushOptions{
+		RemoteName: "origin",
+		RefSpecs: []config.RefSpec{
+			config.RefSpec(path.Join(":refs", "tags", tag)),
+		},
+		Auth: auth,
 	})
-
+	return err
 }
 
 func tagExists(tag string, r *git.Repository) bool {
@@ -247,4 +279,24 @@ func tagExists(tag string, r *git.Repository) bool {
 		return false
 	}
 	return res
+}
+
+func (c *GitClient) ModifyDockerfile(imageName string, tag string) (string, error) {
+	if err := c.lazyInit(); err != nil {
+		return "", err
+	}
+	dockerfile := filepath.Join(c.option.StorePath, "Dockerfile")
+	err := ioutil.WriteFile(dockerfile, []byte(fmt.Sprintf("FROM %s", imageName)), 0755)
+	if err != nil {
+		return "", err
+	}
+	return dockerfile, nil
+}
+
+func (c *GitClient) tag(source string) string {
+	return fmt.Sprintf("release-v%s", source)
+}
+
+func (c *GitClient) unTag(source string) string {
+	return strings.TrimPrefix(source, "release-v")
 }

@@ -36,6 +36,7 @@ mDE4JKT55aN8kocLAAAAAAEC
 var (
 	DefaultRepoOption   RepoOption
 	DefaultMirrorOption MirrorOption
+	DefaultOption       Option
 )
 
 type Option struct {
@@ -58,8 +59,9 @@ type MirrorOption struct {
 	// StateURL check image pull state
 	// when mirror push image will send notification to webhook on server
 	// we use the url to query the image state every 1s
-	StateURL      string `yaml:"state_url"`
-	ImageURLCodec string `yaml:"image_url_codec"`
+	StateURL string `yaml:"state_url"`
+
+	ImageBasePath string `yaml:"image_base_path"`
 }
 
 func init() {
@@ -74,6 +76,12 @@ func init() {
 	}
 
 	DefaultMirrorOption = MirrorOption{
-		StateURL: "https://dpull.clearcode.cn/api/state",
+		StateURL:      "https://dpull.clearcode.cn/api/state",
+		ImageBasePath: "registry.cn-hangzhou.aliyuncs.com/clearcodecn/mirror",
+	}
+
+	DefaultOption = Option{
+		RepoOption:   DefaultRepoOption,
+		MirrorOption: DefaultMirrorOption,
 	}
 }

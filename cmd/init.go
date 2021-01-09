@@ -3,13 +3,14 @@ package cmd
 import (
 	"bytes"
 	"context"
+	"errors"
 	"github.com/clearcodecn/dpull"
+	"github.com/fatih/color"
 	"github.com/spf13/cobra"
-	"gopkg.in/src-d/go-git.v4"
-	"gopkg.in/src-d/go-git.v4/plumbing/transport/ssh"
 	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"os"
+	"path/filepath"
 )
 
 var (
@@ -26,10 +27,7 @@ func init() {
 }
 
 func initRun(cmd *cobra.Command, args []string) error {
-	// 1. 初始化 home config 目录
-	initConfig()
-	// 1. 初始化 git 仓库
-	// 2.
+	return initConfig()
 }
 
 func initConfig() error {
@@ -48,7 +46,17 @@ func initConfig() error {
 	}
 
 	if !exist {
-		option = dpull.DefaultConfigOption
+		option = dpull.DefaultOption
+		var buf = bytes.NewBuffer(nil)
+		err := yaml.NewEncoder(buf).Encode(option)
+		if err != nil {
+			return err
+		}
+		os.MkdirAll(filepath.Dir(configFilePath), 0755)
+		err = ioutil.WriteFile(configFilePath, buf.Bytes(), 0755)
+		if err != nil {
+			return err
+		}
 	} else {
 		data, err := ioutil.ReadFile(configFilePath)
 		if err != nil {
@@ -60,9 +68,25 @@ func initConfig() error {
 		}
 	}
 
+	color.Green("init config success: %s", configFilePath)
+
+	return initRepo(option.RepoOption)
 }
 
 // create repo
-func initRepo(option dpull.RepoOption) {
+func initRepo(option dpull.RepoOption) error {
+	client, err := dpull.NewGitClient(option, dpull.GitClientOption{})
+	if err != nil {
+		return err
+	}
 
+	color.Green("init repo ...")
+	err = client.Clone(context.Background())
+	if err != nil {
+		if !errors.Is(err, dpull.ErrRepoAlreadyExist) {
+			return err
+		}
+	}
+	color.Green("init repo success !")
+	return nil
 }

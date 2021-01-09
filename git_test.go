@@ -12,7 +12,7 @@ import (
 func TestGit(t *testing.T) {
 	option := DefaultRepoOption
 	os.RemoveAll(option.StorePath)
-	git, err := NewGitClient(option)
+	git, err := NewGitClient(option, GitClientOption{})
 	require.Nil(t, err)
 
 	err = git.Clone(context.Background())
@@ -37,6 +37,6 @@ func TestGit(t *testing.T) {
 	require.Nil(t, err)
 
 	// tags:release-v$version
-	err = git.TagAndPush("release-vgit-test3", "change docker file")
+	_, err = git.TagAndPush("release-vgit-test3", "change docker file")
 	require.Nil(t, err)
 }

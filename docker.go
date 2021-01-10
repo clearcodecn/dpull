@@ -1,6 +1,8 @@
 package dpull
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/client"
@@ -8,6 +10,7 @@ import (
 	"github.com/docker/docker/pkg/term"
 	"io"
 	"os"
+	"os/exec"
 	"strings"
 )
 
@@ -18,15 +21,29 @@ var (
 	defaultTag          = "latest"
 )
 
-type Client struct {
-	dockerDaemonClient *client.Client
-}
-
-var (
-	DefaultClient *Client
-)
-
-func init() {
+func InitDocker() {
+	buf := bytes.NewBuffer(nil)
+	cmd := exec.Command("docker", "version")
+	cmd.Stdout = buf
+	cmd.Stderr = buf
+	if err := cmd.Run(); err != nil {
+		panic(err)
+	}
+	var index = 0
+	r := bufio.NewReader(buf)
+	for {
+		data, _, err := r.ReadLine()
+		if err != nil {
+			break
+		}
+		if strings.Contains(string(data), "API version") {
+			index++
+			if index == 2 {
+				version := strings.Split(strings.TrimPrefix(strings.Trim(strings.Trim(string(data), " "), "API version:"), " "), " ")[0]
+				os.Setenv("DOCKER_API_VERSION", version)
+			}
+		}
+	}
 	var err error
 	cli, err := client.NewClientWithOpts()
 	if err == nil {
@@ -36,6 +53,14 @@ func init() {
 		}
 	}
 }
+
+type Client struct {
+	dockerDaemonClient *client.Client
+}
+
+var (
+	DefaultClient *Client
+)
 
 func (c *Client) Pull(ref string, w io.Writer) error {
 	resp, err := c.dockerDaemonClient.ImagePull(context.Background(), ref, types.ImagePullOptions{})

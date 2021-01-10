@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"github.com/clearcodecn/dpull"
 	"github.com/mitchellh/go-homedir"
 	"github.com/spf13/cobra"
 	"path/filepath"
@@ -27,5 +28,6 @@ func init() {
 }
 
 func Execute() error {
+	dpull.InitDocker()
 	return rootCommand.Execute()
 }

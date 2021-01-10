@@ -9,6 +9,10 @@
 go get -u github.com/clearcodecn/cmd/dpull
 ```
 
+国内高速下载
+[https://gitee.com/wocaa/dpull/releases](https://gitee.com/wocaa/dpull/releases)
+
+
 ### 使用
 
 1. 初始化

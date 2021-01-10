@@ -57,6 +57,7 @@ func initConfig() error {
 		if err != nil {
 			return err
 		}
+		// write default config.yaml
 	} else {
 		data, err := ioutil.ReadFile(configFilePath)
 		if err != nil {

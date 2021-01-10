@@ -22,7 +22,7 @@ func init() {
 	)
 
 	dir, _ := homedir.Dir()
-	configFilePath = filepath.Join(dir, "dpull", "config.yaml")
+	configFilePath = filepath.Join(dir, ".dpull", "config.yaml")
 	rootCommand.PersistentFlags().StringVarP(&configFilePath, "config", "c", configFilePath, "config file path")
 }
 

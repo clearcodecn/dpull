@@ -1,42 +1,24 @@
-# dpull
+# dpull 镜像拉取工具
 
-
-### workflow 
-
-1. user init repo
-2. user add image and push to remote repo
-3. the aliyun ci will build it and push to aliyun mirror
-4. client download it. 
-
-by top 4 points, we can do:
-1. docker query image from aliyun, if exist download
-2. use normal ways
-
-git + ci workflow
-for example: we want to pull image: `k8s.gcr.io/pause:3.2`
-in bash view:
-
-1. clone our repo
-git clone git@xxx.com/clearcodecn/repo.git
-
-2. modify docker file
-`echo 'k8s.gcr.io/pause:3.2' > Dockerfile`
-
-3. commit and tag and push
-```bash
-tag=$(echo -n $image | base64)
-git add . 
-git commit -m 'add image'
-git tag -a -m 'add image'
-git push -u origin release-v$tag
+### 安装 
+```yaml
+go get -u github.com/clearcodecn/cmd/dpull
 ```
-4. ci will build an image like `registry.aliyun.com/xxx/xxx/mirror:release-v${tag}`
-5. pull image and rename
-```shell script
-docker pull registry.aliyun.com/xxx/xxx/mirror:release-v${tag}
-image=$(base64 -d ${tag})
-docker tag registry.aliyun.com/xxx/xxx/mirror:release-v${tag} $image 
-docker rmi registry.aliyun.com/xxx/xxx/mirror:release-v${tag}
+
+### 使用
+
+1. 初始化
+```yaml
+dpull init
 ```
- 
-more info please [中文文档](docs/zh_cn.md)
+
+2. 拉取
+```yaml
+dpull pull nginx   # 使用官方仓库镜像时 默认不走代理
+dpull pull gcr.io/google_containers/kube-scheduler-amd64:v1.9.0  #使用镜像加速 
+```
+
+3. 注意事项
+* 本项目不推荐在生产环境使用，生产环境最好是使用官方渠道拉取
+* 更推荐使用自行搭建环境下载，请看[自行搭建教程](./docs/build_your_self.md)
+* 本项目由于使用共有仓库性质，**无法保证镜像安全性**，切勿在生产环境使用
